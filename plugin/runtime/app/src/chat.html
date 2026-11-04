@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src pet: data:; script-src 'self'; style-src 'self'; connect-src pet:;" />
+<title>奶龙对话</title>
+<link rel="stylesheet" href="./chat.css" />
+</head>
+<body>
+  <div id="card">
+    <div id="head">
+      <span id="title">🐣 奶龙</span>
+      <button id="close" type="button" title="收起">×</button>
+    </div>
+    <div id="list"></div>
+    <div id="bar">
+      <button id="poke" type="button" class="mini" title="逗一下奶龙">🐣 逗一下奶龙</button>
+    </div>
+    <div id="row">
+      <input id="input" type="text" placeholder="和奶龙说点什么…" />
+      <button id="send" type="button">发送</button>
+    </div>
+  </div>
+  <script src="./chat.js"></script>
+</body>
+</html>

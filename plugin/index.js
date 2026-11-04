@@ -15,6 +15,7 @@
  *     DSH Desktop 自己的进程里就带着这个变量。
  */
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -106,6 +107,9 @@ function dshHome() {
 }
 function chatMemoryPath() {
   return join(dshHome(), 'nailong-pet', 'chat-memory.json');
+}
+function hostChatFile() {
+  return join(dshHome(), 'nailong-pet', 'host-chat.json');
 }
 function readChatMemory() {
   try {
@@ -210,6 +214,58 @@ export function apply(ctx, config = {}) {
     log('info', 'chat-diag llm.stream=' + (ctx.llm && typeof ctx.llm.stream));
   })();
 
+  // ---- 本机聊天服务：桌面端（Electron）用 ----
+  // DSH webServer 会拦「插件自拉进程」的裸 HTTP 请求，桌面端不能直接打宿主路由，
+  // 所以在 127.0.0.1 另开一个小服务，把端口写进文件供 Electron 读取。
+  let hostChatServer = null;
+  function startHostChatServer() {
+    if (hostChatServer) return;
+    const server = createServer(async (req, res) => {
+      const reply = (obj, code) => {
+        const body = JSON.stringify(obj);
+        res.writeHead(code || 200, {
+          'content-type': 'application/json; charset=utf-8',
+          'content-length': Buffer.byteLength(body),
+        });
+        res.end(body);
+      };
+      try {
+        const url = new URL(req.url, 'http://127.0.0.1');
+        if (url.pathname !== '/chat') return reply({ ok: false, error: 'not found' }, 404);
+        const text = (url.searchParams.get('text') || '').trim();
+        if (!text) return reply({ ok: false, error: '缺少 text' }, 400);
+        const history = readChatMemory();
+        const persona = (typeof config.chatPersona === 'string' && config.chatPersona.trim() !== '')
+          ? config.chatPersona
+          : DEFAULT_PERSONA;
+        const gen = await generateChat(ctx, persona, history, text);
+        if (!gen.ok) {
+          log('warn', '桌面对话失败：' + gen.error);
+          return reply({ ok: false, error: gen.error }, 502);
+        }
+        const now = Date.now();
+        history.push({ role: 'user', content: text, ts: now });
+        history.push({ role: 'assistant', content: gen.text, ts: now });
+        writeChatMemory(history.slice(-CHAT_MEMORY_LIMIT));
+        control('/action?key=laugh').catch(() => {});
+        return reply({ ok: true, text: gen.text });
+      } catch (err) {
+        try { reply({ ok: false, error: String((err && err.message) || err) }, 500); } catch (_) {}
+      }
+    });
+    server.on('error', () => { hostChatServer = null; });
+    server.listen(0, '127.0.0.1', () => {
+      try {
+        const port = server.address().port;
+        mkdirSync(dirname(hostChatFile()), { recursive: true });
+        writeFileSync(hostChatFile(), JSON.stringify({ v: 1, port, pid: process.pid }));
+        log('info', '桌面聊天服务已就绪 127.0.0.1:' + port);
+      } catch (_) { /* 写不进文件也不影响网页端 */ }
+    });
+    hostChatServer = server;
+  }
+  startHostChatServer();
+
   function stop(reason) {
     if (!child) return false;
     const c = child;
@@ -248,7 +304,7 @@ export function apply(ctx, config = {}) {
     if (!exe) return { ok: false, error: '找不到 electron.exe，可用 NAILONG_ELECTRON_PATH 指定' };
     if (!existsSync(APP_DIR)) return { ok: false, error: `找不到奶龙程序目录：${APP_DIR}` };
 
-    const env = { ...process.env, NAILONG_SCALE: String(LOCKED_SCALE) };
+    const env = { ...process.env, NAILONG_SCALE: String(LOCKED_SCALE), NAILONG_HOST_CHAT_FILE: hostChatFile() };
     delete env.ELECTRON_RUN_AS_NODE; // 见文件顶部注释：必须 delete，置空会以 134 崩
 
     const c = spawn(exe, [APP_DIR], { env, cwd: PACKAGE_ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -366,6 +422,10 @@ export function apply(ctx, config = {}) {
   // ---- 3. 跟着 DSH 起停 ----
   ctx.effect(() => {
     if (autoStart) start();
-    return () => { void reap('插件卸载'); };
+    return () => {
+      void reap('插件卸载');
+      try { if (hostChatServer) hostChatServer.close(); } catch (_) {}
+      hostChatServer = null;
+    };
   }, 'nailong-pet: electron lifecycle');
 }

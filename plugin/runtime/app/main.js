@@ -40,6 +40,10 @@ const EDGE_GAP = 40;
 const PANEL_W = 184;
 const PANEL_H = 604;
 const PANEL_GAP = 8;
+// 聊天窗口尺寸与贴边间距
+const CHAT_W = 300;
+const CHAT_H = 400;
+const CHAT_GAP = 8;
 
 if (IS_WIN) app.disableHardwareAcceleration();
 
@@ -417,6 +421,78 @@ function panelState() {
   return { visible: !!(panel && !panel.isDestroyed() && panel.isVisible()) };
 }
 
+// ---------------------------------------------------------------- 聊天窗口
+// 桌面版对话：一个贴着奶龙的小窗口，调宿主另开的 127.0.0.1 聊天服务。
+let chatWin = null;
+let chatWanted = false;
+
+function hostChatUrl() {
+  const file = process.env.NAILONG_HOST_CHAT_FILE || '';
+  if (!file) return null;
+  try {
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return (j && j.port) ? 'http://127.0.0.1:' + j.port : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function chatPlacement() {
+  const b = contentBounds();
+  const wa = workArea();
+  let x;
+  if (b.x + b.width + CHAT_GAP + CHAT_W <= wa.x + wa.width) x = b.x + b.width + CHAT_GAP;
+  else x = b.x - CHAT_GAP - CHAT_W;
+  x = Math.max(wa.x, Math.min(x, wa.x + wa.width - CHAT_W));
+  const petBottom = b.y + b.height - MARGIN.bottom;
+  let y = petBottom - CHAT_H;
+  y = Math.max(wa.y, Math.min(y, wa.y + wa.height - CHAT_H));
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+function createChatWindow() {
+  const p = chatPlacement();
+  chatWin = new BrowserWindow({
+    width: CHAT_W, height: CHAT_H, x: p.x, y: p.y,
+    title: '奶龙对话', transparent: true, frame: false,
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, hasShadow: false, alwaysOnTop: true, focusable: true,
+    useContentSize: true, show: false,
+    webPreferences: {
+      preload: path.join(ROOT, 'preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: false,
+      spellcheck: false, backgroundThrottling: false,
+    },
+  });
+  chatWin.setAlwaysOnTop(true, 'screen-saver');
+  chatWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  chatWin.webContents.on('context-menu', (e) => e.preventDefault());
+  chatWin.loadURL('pet://app/src/chat.html');
+  chatWin.on('closed', () => { chatWin = null; });
+  chatWin.on('close', (e) => { if (!quitting) { e.preventDefault(); hideChat('close-event'); } });
+}
+
+function showChatNow() {
+  if (!chatWin || chatWin.isDestroyed()) return;
+  const p = chatPlacement();
+  chatWin.setContentBounds({ x: p.x, y: p.y, width: CHAT_W, height: CHAT_H });
+  chatWin.show();
+  chatWin.focus();
+}
+
+function showChat() {
+  if (quitting) return;
+  chatWanted = true;
+  send('pause');
+  if (!chatWin || chatWin.isDestroyed()) { createChatWindow(); return; }
+  showChatNow();
+}
+
+function hideChat(reason) {
+  chatWanted = false;
+  if (chatWin && !chatWin.isDestroyed() && chatWin.isVisible()) chatWin.hide();
+}
+
 // ---------------------------------------------------------------- IPC
 function registerIpc() {
   ipcMain.on('pet:set-interactive', (_e, v) => {
@@ -512,6 +588,25 @@ function registerIpc() {
   ipcMain.on('panel:home', () => { send('home'); hidePanel('panel-home'); });
   ipcMain.on('panel:quit', () => quitPet());
   ipcMain.on('panel:close', () => { hidePanel('panel-close'); });
+  ipcMain.on('panel:chat', () => { hidePanel('panel-chat'); showChat(); });
+  // ---- 聊天窗口
+  ipcMain.on('chat:ready', () => { if (chatWanted) showChatNow(); });
+  ipcMain.on('chat:close', () => hideChat('chat-close'));
+  ipcMain.on('chat:poke', () => { send('action:random'); });
+  ipcMain.handle('chat:send', async (_e, text) => {
+    const t = String(text || '').trim();
+    if (!t) return { ok: false, error: '空消息' };
+    const base = hostChatUrl();
+    if (!base) return { ok: false, error: '聊天服务还没就绪，稍等再试' };
+    try {
+      const res = await fetch(base + '/chat?text=' + encodeURIComponent(t), { signal: AbortSignal.timeout(60_000) });
+      const j = await res.json().catch(() => null);
+      if (j && j.ok) { send('action:laugh'); return j; }
+      return (j && j.ok === false) ? j : { ok: false, error: 'HTTP ' + res.status };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  });
 
   ipcMain.on('pet:context-menu', () => {
     if (!win || win.isDestroyed()) return;
@@ -626,6 +721,7 @@ function buildMenuTemplate() {
     { label: '奶龙', enabled: false },
     { type: 'separator' },
     { label: '动作面板…', click: () => showPanel() },
+    { label: '和奶龙聊天…', click: () => showChat() },
     { type: 'separator' },
     { label: '打个招呼', click: () => send('action:wave') },
     { label: '开怀大笑', click: () => send('action:laugh') },

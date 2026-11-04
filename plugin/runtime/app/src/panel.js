@@ -88,6 +88,7 @@ async function boot() {
 }
 
 document.getElementById('close').addEventListener('click', () => host.close());
+document.getElementById('chat').addEventListener('click', () => host.chat());
 document.getElementById('home').addEventListener('click', () => host.home());
 document.getElementById('quit').addEventListener('click', () => host.quit());
 

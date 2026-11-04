@@ -28,7 +28,9 @@ python tools/build_manifest.py    # 生成 plugin/runtime/app/assets/manifest.js
 - 内置「活泼小奶龙」人格，可在 `cordis.patch.yml` 的 `chatPersona` 里自定义；
 - 每次回复后，桌面上的奶龙会笑一下回应。
 
-> 对话 UI 做在网页端（DSH 页面里），因为 DSH Desktop 会拦截「插件自拉进程 → 宿主 webServer」的裸 HTTP 请求；桌面奶龙本体只负责表演动作。
+> 对话分两处：
+> - **桌面端（推荐）**：点桌面奶龙 → 侧边面板 →「💬 和奶龙聊天」，弹出贴着奶龙的小聊天窗口。宿主在 127.0.0.1 另开一个只监听本机的小服务（DSH webServer 会拦插件自拉进程的裸 HTTP 请求，所以不能直接打宿主路由），Electron 端直接调它。
+> - **网页端**：DSH 右侧栏里的「奶龙对话」标签（可选能力）。
 
 ### 3. 素材来源署名
 manifest 的 `meta.source` 已明确标注「zhangkk833-byte/dsh-nailong-pet + kirintea/dsh-nailong-pet 3D spritesheet (CC BY 4.0)」。

@@ -34,4 +34,14 @@ contextBridge.exposeInMainWorld('petPanel', {
   close: () => ipcRenderer.send('panel:close'),
   /** 把卡片量出来的内容高度回报主进程，由主进程调整窗口高度 */
   resize: (h) => ipcRenderer.invoke('panel:resize', h),
+  /** 打开桌面聊天窗口 */
+  chat: () => ipcRenderer.send('panel:chat'),
+});
+
+// 桌面聊天窗口（src/chat.html）用这一组
+contextBridge.exposeInMainWorld('petChat', {
+  ready: () => ipcRenderer.send('chat:ready'),
+  send: (text) => ipcRenderer.invoke('chat:send', text),
+  poke: () => ipcRenderer.send('chat:poke'),
+  close: () => ipcRenderer.send('chat:close'),
 });
