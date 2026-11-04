@@ -193,6 +193,23 @@ export function apply(ctx, config = {}) {
     if (typeof fn === 'function') fn.call(ctx.logger, '[nailong-pet] ' + msg);
   };
 
+  // 对话能力自检：把关键依赖的状态写进日志，便于排查「聊天没反应」。
+  void (async () => {
+    try {
+      const m = await import('@deepseek-ai/dsh-llm');
+      log('info', 'chat-diag dsh-llm=ok keys=' + Object.keys(m).slice(0, 8).join(','));
+    } catch (err) {
+      log('warn', 'chat-diag dsh-llm=FAIL ' + String((err && err.message) || err));
+    }
+    try {
+      const sel = ctx.agentDefaultModel && ctx.agentDefaultModel.currentSelection();
+      log('info', 'chat-diag agentDefaultModel=' + JSON.stringify(sel || null));
+    } catch (err) {
+      log('warn', 'chat-diag agentDefaultModel=ERR ' + String((err && err.message) || err));
+    }
+    log('info', 'chat-diag llm.stream=' + (ctx.llm && typeof ctx.llm.stream));
+  })();
+
   function stop(reason) {
     if (!child) return false;
     const c = child;
@@ -290,7 +307,10 @@ export function apply(ctx, config = {}) {
               ? config.chatPersona
               : DEFAULT_PERSONA;
             const r = await generateChat(ctx, persona, history, text);
-            if (!r.ok) return reply({ ok: false, error: r.error }, 502);
+            if (!r.ok) {
+              log('warn', '对话失败：' + r.error);
+              return reply({ ok: false, error: r.error }, 502);
+            }
             const now = Date.now();
             history.push({ role: 'user', content: text, ts: now });
             history.push({ role: 'assistant', content: r.text, ts: now });

@@ -1,63 +1,44 @@
-/**
- * 奶龙桌宠 —— DSH 插件的 Web 半。
- *
- * 在输入框下方挂 🐣 按钮：点开是聊天浮窗，和奶龙对话（宿主 /chat 用 DSH 的 LLM 生成，
- * 并记到本地 memory）；浮窗里另有一个「逗一下」，让奶龙随机表演。
- * 注意（DSH 的硬性要求）：
- *   - 必须是**副作用脚本**，不能有顶层 import/export，靠 window.__ModuleLoader__.load 注册；
- *   - `id` 必须等于包名 `dsh-nailong-pet`，否则客户端模块表对不上号；
- *   - 不能 require 任何 Harness 的 Client 包（抛错只会让槽位条目静默变空白）。
- */
+// 奶龙桌宠 —— DSH 插件的 Web 半。
+//
+// 参照鲸鱼女仆（dsh-pet）的设计：把「奶龙对话」注册成 DSH 右侧栏标签页
+// （sidebarRightTabs 服务 + sidebar.right.pane.tab 插槽），而不是输入框下方的浮窗。
+// 右栏服务是可选能力：缺失时只告警，不影响桌宠本体（Electron 端照常跑）。
+//
+// DSH 硬性要求：
+//   - 必须是副作用脚本，不能有顶层 import/export，靠 window.__ModuleLoader__.load 注册；
+//   - id 必须等于包名 dsh-nailong-pet；
+//   - 不能 require 任何 Harness 的 Client 包（抛错只会让槽位条目静默变空白）。
 window.__ModuleLoader__.load({
   id: 'dsh-nailong-pet',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
+    const { useState, useEffect, useRef } = React;
     const ROUTE = '/nailong-pet-7f3a';
+    const TAB_ID = 'dsh-nailong-pet-chat';
+    const TAB_KIND = 'nailong-pet-chat';
+    const TAB_TITLE = '奶龙对话';
 
     const css = {
-      column: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end' },
-      btn: {
-        border: '1px solid var(--dsw-alias-border, rgba(128,128,128,.4))',
-        background: 'transparent',
-        color: 'inherit',
-        borderRadius: 8,
-        padding: '2px 8px',
-        fontSize: 14,
-        lineHeight: '20px',
-        cursor: 'pointer',
-      },
-      panel: {
-        position: 'fixed', right: 16, bottom: 96, width: 320, maxHeight: 440,
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        background: '#ffffff', color: '#222', borderRadius: 12,
-        border: '1px solid rgba(0,0,0,.14)', boxShadow: '0 10px 30px rgba(0,0,0,.2)',
-        zIndex: 9999, fontSize: 13,
-      },
-      head: {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '8px 10px', borderBottom: '1px solid rgba(0,0,0,.08)', fontWeight: 600,
-      },
-      close: { border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', fontSize: 14, marginLeft: 6 },
-      poke: { border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', fontSize: 12, padding: '2px 4px' },
-      list: { flex: 1, overflowY: 'auto', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 120 },
-      userMsg: { alignSelf: 'flex-end', background: '#dbeafe', borderRadius: '10px 10px 2px 10px', padding: '6px 9px', maxWidth: '82%', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
-      botMsg: { alignSelf: 'flex-start', background: '#f3f4f6', borderRadius: '10px 10px 10px 2px', padding: '6px 9px', maxWidth: '82%', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
-      inputRow: { display: 'flex', gap: 6, padding: 8, borderTop: '1px solid rgba(0,0,0,.08)' },
-      input: { flex: 1, minWidth: 0, border: '1px solid rgba(0,0,0,.2)', borderRadius: 8, padding: '6px 8px', fontSize: 13, outline: 'none' },
+      wrap: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontSize: 13, color: 'inherit' },
+      list: { flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 },
+      user: { alignSelf: 'flex-end', background: 'rgba(249,115,22,.14)', border: '1px solid rgba(249,115,22,.35)', borderRadius: '12px 12px 2px 12px', padding: '6px 10px', maxWidth: '82%', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+      bot: { alignSelf: 'flex-start', background: 'rgba(128,128,128,.12)', border: '1px solid rgba(128,128,128,.25)', borderRadius: '12px 12px 12px 2px', padding: '6px 10px', maxWidth: '82%', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+      row: { display: 'flex', gap: 6, padding: '8px 10px', borderTop: '1px solid rgba(128,128,128,.2)' },
+      input: { flex: 1, minWidth: 0, border: '1px solid rgba(128,128,128,.4)', borderRadius: 8, padding: '6px 8px', fontSize: 13, outline: 'none', background: 'transparent', color: 'inherit' },
       send: { border: 'none', borderRadius: 8, background: '#f97316', color: '#fff', padding: '6px 12px', cursor: 'pointer', fontSize: 13 },
+      bar: { display: 'flex', gap: 6, padding: '4px 10px' },
+      mini: { border: 'none', background: 'transparent', color: 'inherit', opacity: 0.7, cursor: 'pointer', fontSize: 12, padding: '2px 4px' },
     };
 
-    function ChatPanel({ onClose }) {
-      const [msgs, setMsgs] = React.useState([
-        { role: 'assistant', text: '嗨，我是奶龙～ 想聊点什么？🐣' },
-      ]);
-      const [text, setText] = React.useState('');
-      const [busy, setBusy] = React.useState(false);
-      const listRef = React.useRef(null);
+    function ChatPanel() {
+      const [msgs, setMsgs] = useState([{ role: 'assistant', text: '嗨，我是奶龙～ 想聊点什么？🐣' }]);
+      const [text, setText] = useState('');
+      const [busy, setBusy] = useState(false);
+      const listRef = useRef(null);
       const push = (m) => setMsgs((prev) => [...prev, m]);
 
-      React.useEffect(() => {
+      useEffect(() => {
         const el = listRef.current;
         if (el) el.scrollTop = el.scrollHeight;
       }, [msgs, busy]);
@@ -69,7 +50,7 @@ window.__ModuleLoader__.load({
         push({ role: 'user', text: t });
         setBusy(true);
         try {
-          const res = await fetch(ROUTE + '/chat?text=' + encodeURIComponent(t));
+          const res = await fetch(ROUTE + '/chat?text=' + encodeURIComponent(t), { cache: 'no-store' });
           const j = await res.json().catch(() => null);
           if (j && j.ok && j.text) push({ role: 'assistant', text: j.text });
           else push({ role: 'assistant', text: '（奶龙没听见：' + ((j && j.error) || ('HTTP ' + res.status)) + '）' });
@@ -80,21 +61,15 @@ window.__ModuleLoader__.load({
         }
       };
 
-      return h('div', { style: css.panel },
-        h('div', { style: css.head },
-          h('span', null, '🐣 奶龙'),
-          h('span', null,
-            h('button', {
-              type: 'button', style: css.poke, title: '逗一下奶龙',
-              onClick: () => { void fetch(ROUTE + '/action?key=random').catch(() => {}); },
-            }, '逗一下'),
-            h('button', { type: 'button', style: css.close, title: '收起', onClick: onClose }, '✕'))),
+      const poke = () => { void fetch(ROUTE + '/action?key=random').catch(() => {}); };
+
+      return h('div', { style: css.wrap },
         h('div', { style: css.list, ref: listRef },
-          msgs.map((m, i) => h('div', {
-            key: i, style: m.role === 'user' ? css.userMsg : css.botMsg,
-          }, m.text)),
-          busy ? h('div', { style: css.botMsg }, '奶龙正在想…') : null),
-        h('div', { style: css.inputRow },
+          msgs.map((m, i) => h('div', { key: i, style: m.role === 'user' ? css.user : css.bot }, m.text)),
+          busy ? h('div', { style: css.bot }, '奶龙正在想…') : null),
+        h('div', { style: css.bar },
+          h('button', { type: 'button', style: css.mini, title: '逗一下奶龙', onClick: poke }, '🐣 逗一下奶龙')),
+        h('div', { style: css.row },
           h('input', {
             style: css.input, value: text, placeholder: '和奶龙说点什么…',
             onChange: (e) => setText(e.target.value),
@@ -103,24 +78,29 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', style: css.send, disabled: busy, onClick: send }, '发送')));
     }
 
-    function NailongDock() {
-      const [open, setOpen] = React.useState(false);
-      return h('div', { style: css.column },
-        open ? h(ChatPanel, { onClose: () => setOpen(false) }) : null,
-        h('button', {
-          type: 'button',
-          title: '和奶龙聊两句',
-          onClick: () => setOpen((v) => !v),
-          style: css.btn,
-        }, '🐣'));
-    }
-
     return {
       inject: ['slots'],
       apply(ctx) {
-        ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
-          name: 'conversation.composer.dock', id: 'nailong-pet', order: 60,
-        }, NailongDock));
+        // 右侧栏「奶龙对话」：可选能力，服务缺失时只告警，不影响桌宠本体。
+        try {
+          const tabs = ctx.get && ctx.get('sidebarRightTabs');
+          if (!tabs || typeof tabs.register !== 'function') {
+            console.warn('[nailong-pet] 右侧栏不可用：没有 sidebarRightTabs 服务，对话标签未注册');
+            return;
+          }
+          tabs.register({
+            id: TAB_ID,
+            kind: TAB_KIND,
+            priority: 'extension',
+            title: () => TAB_TITLE,
+            guide: [{ id: TAB_KIND, order: 400, title: () => TAB_TITLE, description: () => '和奶龙聊天' }],
+          });
+          ctx.slots.inject('sidebar.right.pane.tab', function* () {
+            yield ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID, order: 100 }, () => h(ChatPanel, {}));
+          });
+        } catch (err) {
+          console.warn('[nailong-pet] 右侧栏对话注册失败（已忽略）：', err);
+        }
       },
     };
   },
