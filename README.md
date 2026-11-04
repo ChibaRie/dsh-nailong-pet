@@ -67,6 +67,8 @@ manifest 的 `meta.source` 已明确标注「zhangkk833-byte/dsh-nailong-pet + k
 ```powershell
 git clone https://github.com/ZZY-STACK/dsh-nailong-pet.git
 cd dsh-nailong-pet
+# 插件依赖 @deepseek-ai/dsh-llm（对话用），先装到插件自己的 node_modules
+cd plugin && npm install && cd ..
 dsh plugin --profile desktop add link:./plugin
 ```
 
