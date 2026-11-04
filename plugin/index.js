@@ -15,12 +15,12 @@
  *     DSH Desktop 自己的进程里就带着这个变量。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const name = 'nailong-pet';
-export const inject = ['webServer', 'commands'];
+export const inject = ['webServer', 'commands', 'llm', 'agentDefaultModel'];
 
 /** 路由前缀要够独特：同一张表里重复 (kind, path) 会在启动时 throw，拖垮整棵配置树 */
 const ROUTE = '/nailong-pet-7f3a';
@@ -82,6 +82,104 @@ async function control(pathAndQuery) {
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) };
   }
+}
+
+
+// ---------------------------------------------------------------- 对话（LLM）
+// 奶龙的对话能力：网页端把用户输入交给宿主，这里用 DSH 的 LLM 统一抽象层
+// （ctx.llm + agentDefaultModel）生成一句回复，并把最近几轮记到本地 memory，
+// 让下一轮能接着聊。dsh-llm 是宿主注入的模块，动态 import + 失败兜底，
+// 保证即使拿不到 LLM 也不影响桌宠本体启动。
+let llmHelpersPromise = null;
+function importLlm() {
+  if (!llmHelpersPromise) {
+    llmHelpersPromise = import('@deepseek-ai/dsh-llm').catch((err) => {
+      llmHelpersPromise = null;
+      throw err;
+    });
+  }
+  return llmHelpersPromise;
+}
+
+function dshHome() {
+  return process.env.DSH_HOME || join(process.env.USERPROFILE || process.env.HOME || '', '.dsh');
+}
+function chatMemoryPath() {
+  return join(dshHome(), 'nailong-pet', 'chat-memory.json');
+}
+function readChatMemory() {
+  try {
+    const j = JSON.parse(readFileSync(chatMemoryPath(), 'utf8'));
+    return Array.isArray(j && j.messages) ? j.messages : [];
+  } catch (_) {
+    return [];
+  }
+}
+function writeChatMemory(messages) {
+  try {
+    mkdirSync(dirname(chatMemoryPath()), { recursive: true });
+    writeFileSync(chatMemoryPath(), JSON.stringify({ messages }, null, 2));
+  } catch (_) { /* 记不下来不影响聊天 */ }
+}
+
+const CHAT_MEMORY_LIMIT = 20;
+const DEFAULT_PERSONA =
+  '你是一只住在 Windows 桌面上的小奶龙，名叫“奶龙”。性格活泼、爱吃、爱玩，说话简短可爱（尽量 30 字以内），偶尔撒娇、用颜文字。用户用中文和你聊天，你就用中文回复，像真人闲聊一样自然。';
+
+/** 生成一次对话回复；失败返回结构化原因，不伪造文案。 */
+async function generateChat(ctx, persona, history, userText) {
+  let helpers;
+  try {
+    helpers = await importLlm();
+  } catch (err) {
+    return { ok: false, error: '对话服务不可用（dsh-llm 未加载）：' + String((err && err.message) || err) };
+  }
+  const llm = ctx.llm;
+  if (!llm || typeof llm.stream !== 'function') {
+    return { ok: false, error: 'LLM 服务不可用' };
+  }
+  let sel = null;
+  try {
+    sel = ctx.agentDefaultModel && ctx.agentDefaultModel.currentSelection();
+  } catch (_) { sel = null; }
+  if (!sel || !sel.provider || !sel.model) {
+    return { ok: false, error: '当前对话没有配置模型' };
+  }
+  const { BlockAssembler, createUserMessage, createAssistantMessage } = helpers;
+  const historyMessages = history.map((m) =>
+    m.role === 'user'
+      ? createUserMessage({ content: [{ type: 'text', text: String(m.content || '') }], source: { kind: 'user' } })
+      : createAssistantMessage({
+          content: [{ type: 'text', text: String(m.content || '') }],
+          source: { provider: sel.provider, model: sel.model },
+        }),
+  );
+  const options = {
+    provider: sel.provider,
+    model: sel.model,
+    sessionId: 'dsh-nailong-pet',
+    messages: [
+      ...historyMessages,
+      createUserMessage({ content: [{ type: 'text', text: userText }], source: { kind: 'user' } }),
+    ],
+    system: persona,
+    temperature: 1,
+    signal: AbortSignal.timeout(60_000),
+  };
+  const assembler = new BlockAssembler();
+  try {
+    for await (const chunk of llm.stream(options)) assembler.push(chunk);
+  } catch (err) {
+    return { ok: false, error: '对话生成失败：' + String((err && err.message) || err) };
+  }
+  const text = assembler
+    .blocks()
+    .filter((b) => b.type === 'text')
+    .map((b) => (b && typeof b.text === 'string' ? b.text : ''))
+    .join('')
+    .trim();
+  if (!text) return { ok: false, error: '奶龙这次没想好说什么' };
+  return { ok: true, text };
 }
 
 export function apply(ctx, config = {}) {
@@ -183,6 +281,23 @@ export function apply(ctx, config = {}) {
             const key = url.searchParams.get('key') || 'random';
             if (!child) start();
             return reply(await control('/action?key=' + encodeURIComponent(key)));
+          }
+          if (sub === 'chat') {
+            const text = (url.searchParams.get('text') || '').trim();
+            if (!text) return reply({ ok: false, error: '缺少 text' }, 400);
+            const history = readChatMemory();
+            const persona = (typeof config.chatPersona === 'string' && config.chatPersona.trim() !== '')
+              ? config.chatPersona
+              : DEFAULT_PERSONA;
+            const r = await generateChat(ctx, persona, history, text);
+            if (!r.ok) return reply({ ok: false, error: r.error }, 502);
+            const now = Date.now();
+            history.push({ role: 'user', content: text, ts: now });
+            history.push({ role: 'assistant', content: r.text, ts: now });
+            writeChatMemory(history.slice(-CHAT_MEMORY_LIMIT));
+            // 让桌面奶龙笑一下（推送失败不影响回复本身）
+            control('/action?key=laugh').catch(() => {});
+            return reply({ ok: true, text: r.text });
           }
           return reply({ ok: false, error: 'not found' }, 404);
         } catch (err) {
