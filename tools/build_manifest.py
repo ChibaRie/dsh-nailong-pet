@@ -18,7 +18,7 @@ import os
 import numpy as np
 from PIL import Image
 
-ROOT = r"D:\娱乐\draft\nailong-pet"
+ROOT = r"C:\Users\25100\.dsh\plugins\dsh-nailong-pet"
 APP = os.path.join(ROOT, "plugin", "runtime", "app")
 WORK = os.path.join(ROOT, "work")
 ASSETS = os.path.join(APP, "assets")
@@ -57,7 +57,7 @@ ANIMS = [
     dict(key="sit",    label="坐一会",   row=5,  fps=2,  loop=True,  repeat=1, hold=False, facing="front", move=0,   kind="idle",   weight=8,  pick=[3]),
     dict(key="idle2",  label="东张西望", row=6,  fps=7,  loop=True,  repeat=1, hold=False, facing="front", move=0,   kind="idle",   weight=8,  pick=None),
     dict(key="work",   label="敲键盘",   row=7,  fps=7,  loop=False, repeat=3, hold=False, facing="front", move=0,   kind="action", weight=5,  pick=None),
-    dict(key="shy",    label="害羞",     row=8,  fps=7,  loop=False, repeat=2, hold=False, facing="front", move=0,   kind="action", weight=4,  pick=None),
+    dict(key="shy",    label="害羞",     row=6,  fps=7,  loop=False, repeat=2, hold=False, facing="front", move=0,   kind="action", weight=4,  pick=None),
     dict(key="idle3",  label="放空",     row=9,  fps=7,  loop=True,  repeat=1, hold=False, facing="front", move=0,   kind="idle",   weight=8,  pick=None),
     dict(key="idle4",  label="打哈欠",   row=10, fps=6,  loop=True,  repeat=1, hold=False, facing="front", move=0,   kind="idle",   weight=6,  pick=None),
     dict(key="stroll", label="悠闲散步", row=1,  fps=6,  loop=True,  repeat=1, hold=False, facing="right", move=26,  kind="stroll", weight=0,  pick=None),
@@ -142,7 +142,7 @@ def main():
             "totalFrames": sum(len(a["frames"]) for a in anims),
             "idleMs": [25000, 35000],
             "blendMax": BLEND_MAX,
-            "source": "Maple498/nai-wa-codex-pet (spritesheet.webp, CC BY 4.0)",
+            "source": "zhangkk833-byte/dsh-nailong-pet + kirintea/dsh-nailong-pet 3D spritesheet (CC BY 4.0)",
         },
         "animations": anims,
     }

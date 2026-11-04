@@ -18,7 +18,7 @@ import json
 import os
 from PIL import Image, ImageDraw
 
-ROOT = r"D:\娱乐\draft\nailong-pet"
+ROOT = r"C:\Users\25100\.dsh\plugins\dsh-nailong-pet"
 APP = os.path.join(ROOT, "plugin", "runtime", "app")
 SRC = os.path.join(APP, "assets", "raw", "spritesheet.webp")
 OUT = os.path.join(APP, "assets", "frames")
