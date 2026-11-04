@@ -1,0 +1,11 @@
+{
+  "name": "nailong-desktop-pet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "奶龙桌面宠物 —— 基于 8x11 精灵图集的透明置顶桌宠",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT"
+}

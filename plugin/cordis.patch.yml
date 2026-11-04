@@ -1,0 +1,5 @@
+- insert:
+    - id: nailong-pet
+      name: 'dsh-nailong-pet'
+      config:
+        autoStart: true

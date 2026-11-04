@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src pet: data:; script-src 'self'; style-src 'self'; connect-src pet:;" />
+<title>奶龙动作</title>
+<link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <div id="card">
+    <div id="head">
+      <span id="title">奶龙</span>
+      <button id="close" type="button" title="收起面板">×</button>
+    </div>
+    <div id="acts" class="list"></div>
+    <div class="sep"></div>
+    <button id="home" class="row" type="button">回到右下角</button>
+    <button id="quit" class="row danger" type="button">让奶龙回家（退出）</button>
+  </div>
+  <div id="err"></div>
+  <script src="panel.js"></script>
+</body>
+</html>

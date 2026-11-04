@@ -1,0 +1,49 @@
+{
+  "name": "dsh-nailong-pet",
+  "version": "0.1.0",
+  "description": "奶龙桌宠 · 随 DeepSeek Harness 启动的透明置顶桌面宠物：13 组动作、定时自动表演、点一下弹出动作面板",
+  "type": "module",
+  "license": "MIT",
+  "author": "zhangkk833-byte",
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "desktop-pet",
+    "nailong",
+    "奶龙"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhangkk833-byte/dsh-nailong-pet.git",
+    "directory": "plugin"
+  },
+  "homepage": "https://github.com/zhangkk833-byte/dsh-nailong-pet#readme",
+  "bugs": {
+    "url": "https://github.com/zhangkk833-byte/dsh-nailong-pet/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "runtime"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}

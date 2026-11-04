@@ -1,0 +1,120 @@
+/* 奶龙动作面板 —— 贴在奶龙旁边弹出的小卡片 */
+:root {
+  --ink: #4a3a1c;
+  --ink-dim: #8d7c58;
+  --card: rgba(255, 252, 244, 0.97);
+  --edge: rgba(196, 160, 78, 0.35);
+  --brand: #f5c53c;
+  --brand-ink: #6b4d05;
+  --hot: #ffe9a6;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+  font: 13px/1.4 "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: var(--ink);
+}
+
+/* top 锚定 + height:auto：卡片高度 = 内容高度，
+   面板页据此量出需要多大的窗口回报主进程（见 panel.js 的 fit()） */
+#card {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 6px;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 9px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  box-shadow: 0 6px 22px rgba(90, 66, 12, 0.28), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  animation: pop 140ms cubic-bezier(0.2, 1.4, 0.5, 1);
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: translateX(8px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+#head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 6px;
+}
+
+#title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--brand-ink);
+}
+
+#close {
+  width: 20px; height: 20px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 15px; line-height: 1;
+  cursor: pointer;
+}
+#close:hover { background: #f0e6cc; color: var(--ink); }
+
+.sect {
+  padding: 2px 4px 5px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+}
+
+.sep {
+  height: 1px;
+  margin: 6px 2px;
+  background: linear-gradient(90deg, transparent, var(--edge), transparent);
+}
+
+.list { display: flex; flex-direction: column; gap: 2px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.row:hover { background: var(--hot); }
+.row:active { background: var(--brand); color: var(--brand-ink); }
+
+.row .emo { font-size: 14px; width: 18px; text-align: center; }
+.row .txt { flex: 1; }
+.row .hint { font-size: 10px; color: var(--ink-dim); }
+
+.danger { color: #9a4a2a; }
+.danger:hover { background: #ffe3d5; }
+
+#err {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 10px;
+  display: none;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #ffe9e4;
+  color: #8a2c12;
+  font-size: 11px;
+}
