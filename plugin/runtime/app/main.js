@@ -378,7 +378,7 @@ function createPanel() {
       hidePanel('blur');
     });
   }
-  panel.on('closed', () => { panel = null; panelReady = false; });
+  panel.on('closed', () => { panel = null; panelReady = false; resumePet('panel'); });
   panel.on('close', (e) => { if (!quitting) { e.preventDefault(); hidePanel('close-event'); } });
 }
 
@@ -395,7 +395,7 @@ function showPanel() {
   if (quitting) return;
   panelWanted = true;
   // 让奶龙先站住，面板才有一个稳定的锚点
-  send('pause');
+  pausePet('panel');
   if (!panel || panel.isDestroyed()) { createPanel(); return; } // 页面 ready 后会回调
   if (panelReady) showPanelNow();
 }
@@ -414,7 +414,7 @@ function hidePanel(reason) {
   }
   panelWanted = false;
   if (panel && !panel.isDestroyed() && panel.isVisible()) panel.hide();
-  send('resume');   // 面板收起来了，奶龙可以继续自己的节奏
+  resumePet('panel');   // 面板收起来了；聊天窗还开着的话奶龙继续保持暂停
 }
 
 function panelState() {
@@ -468,7 +468,7 @@ function createChatWindow() {
   chatWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   chatWin.webContents.on('context-menu', (e) => e.preventDefault());
   chatWin.loadURL('pet://app/src/chat.html');
-  chatWin.on('closed', () => { chatWin = null; });
+  chatWin.on('closed', () => { chatWin = null; resumePet('chat'); });
   chatWin.on('close', (e) => { if (!quitting) { e.preventDefault(); hideChat('close-event'); } });
 }
 
@@ -483,7 +483,7 @@ function showChatNow() {
 function showChat() {
   if (quitting) return;
   chatWanted = true;
-  send('pause');
+  pausePet('chat');
   if (!chatWin || chatWin.isDestroyed()) { createChatWindow(); return; }
   showChatNow();
 }
@@ -491,6 +491,20 @@ function showChat() {
 function hideChat(reason) {
   chatWanted = false;
   if (chatWin && !chatWin.isDestroyed() && chatWin.isVisible()) chatWin.hide();
+  resumePet('chat');
+}
+
+/** 奶龙被拖走或叫回家之后，把已经开着的面板/聊天窗重新贴回它旁边 */
+function followDialogs() {
+  if (!win || win.isDestroyed()) return;
+  if (panel && !panel.isDestroyed() && panel.isVisible()) {
+    const p = panelPlacement(panelH);
+    panel.setContentBounds({ x: p.x, y: p.y, width: PANEL_W, height: p.h });
+  }
+  if (chatWin && !chatWin.isDestroyed() && chatWin.isVisible()) {
+    const p = chatPlacement();
+    chatWin.setContentBounds({ x: p.x, y: p.y, width: CHAT_W, height: CHAT_H });
+  }
 }
 
 // ---------------------------------------------------------------- IPC
@@ -527,6 +541,7 @@ function registerIpc() {
     pendingY -= dy;
     const b = contentBounds();
     const c = applyContentBounds(b.x + dx, b.y + dy, b.width, b.height);
+    followDialogs();
     // 走路时每帧都调，防抖会一直顺延；停下 400ms 后才真正落盘一次。
     // 这样即使进程被强杀，位置也基本是新的。
     saveConfig({});
@@ -618,6 +633,20 @@ function send(cmd) {
   if (win && !win.isDestroyed()) win.webContents.send('pet:command', cmd);
 }
 
+// 暂停/恢复的 owner 集合：动作面板和聊天窗各自持有一份，最后一个关掉才恢复。
+// 以前是一个布尔，而且 hide 就无条件 resume —— 聊天关掉后没人再发 resume，
+// 奶龙会永远 hold 住（原地走）；面板的 blur / hide 又会把聊天窗的 pause 顶掉。
+const pauseOwners = new Set();
+function pausePet(owner) {
+  const wasHeld = pauseOwners.size > 0;
+  pauseOwners.add(owner);
+  if (!wasHeld) send('pause');
+}
+function resumePet(owner) {
+  if (!pauseOwners.delete(owner)) return;
+  if (!pauseOwners.size) send('resume');
+}
+
 function goHome() {
   if (!win || win.isDestroyed()) return null;
   const b = contentBounds();
@@ -626,6 +655,7 @@ function goHome() {
     wa.x + wa.width - b.width - EDGE_GAP,
     wa.y + wa.height - b.height - EDGE_GAP,
     b.width, b.height);
+  followDialogs();
   lastHit = 0;
   return contentBounds();
 }
@@ -897,6 +927,7 @@ if (!app.requestSingleInstanceLock()) {
       wa.x + wa.width - b.width - EDGE_GAP,
       wa.y + wa.height - b.height - EDGE_GAP,
       b.width, b.height);
+    followDialogs();
     lastHit = 0;
   });
 
