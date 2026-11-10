@@ -9,14 +9,14 @@
  * 两个必须照做的细节（都是 DSH 生态里踩出来的）：
  *   - 用 node:child_process 自己 spawn，不用 `ctx.subprocess.spawn`：那个服务销毁时会
  *     terminate 并 await 所有受管子进程，会把 DSH 的退出拖住；自己 spawn 才能精确决定
- *     什么时候收、收的是哪一只（见 reap）。
+ *     什么时候收、收的是哪一只（见 stop）。
  *   - spawn 之前必须把 `ELECTRON_RUN_AS_NODE` 从 env 里**删掉**（不是置空）。
  *     置空会让 Electron 以 134 崩掉；'0'/'false'/'1' 都会让它进纯 Node 模式。
  *     DSH Desktop 自己的进程里就带着这个变量。
  */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,15 +74,39 @@ function controlPort() {
   }
 }
 
+/** 控制通道超时：文件里可能是死端口，命令/退出不能在这里无限等 */
+const CONTROL_TIMEOUT_MS = 2000;
+
 async function control(pathAndQuery) {
   const port = controlPort();
   if (!port) return { ok: false, error: '奶龙没在跑' };
   try {
-    const r = await fetch(`http://127.0.0.1:${port}${pathAndQuery}`);
+    const r = await fetch(`http://127.0.0.1:${port}${pathAndQuery}`, {
+      signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
+    });
     return await r.json();
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) };
   }
+}
+
+/** 常驻实例（不是本进程 spawn 的）也能通过控制通道判断在不在 */
+async function probe() {
+  if (!controlPort()) return false;
+  const r = await control('/state');
+  return !!(r && r.ok);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 新拉起的奶龙要 1~2s 才写好 control.json；动作命令不能立刻去 control */
+async function waitForPet(ms) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await probe()) return true;
+    await sleep(150);
+  }
+  return false;
 }
 
 
@@ -264,19 +288,17 @@ export function apply(ctx, config = {}) {
     });
     hostChatServer = server;
   }
+  /** 只删自己写的那份端口文件，避免误删另一个 DSH 实例的服务 */
+  function removeHostChatFile() {
+    try {
+      const j = JSON.parse(readFileSync(hostChatFile(), 'utf8'));
+      if (j && j.pid === process.pid) unlinkSync(hostChatFile());
+    } catch (_) { /* 文件不存在或不是我们的 */ }
+  }
   startHostChatServer();
 
-  function stop(reason) {
-    if (!child) return false;
-    const c = child;
-    child = null;
-    try { c.kill(); } catch (_) { /* 已经退了 */ }
-    log('info', `奶龙已收工（${reason}）`);
-    return true;
-  }
-
   /**
-   * 收掉奶龙 —— 卸载插件、DSH 退出时都走这里。
+   * 收掉奶龙 —— 面板按钮、/nailong、卸载插件都走这里。
    *
    * 先杀本会话 spawn 的那个子进程。但 `child` 经常是空的：奶龙可能是上一次 DSH
    * 留下的、或者你自己双击过那个独立启动的 .bat，进程句柄根本不在我们手里 ——
@@ -287,8 +309,14 @@ export function apply(ctx, config = {}) {
    * （%APPDATA%/nailong-desktop-pet）里，能连上就说明那确实是我们这只奶龙，
    * 不会误伤别人的程序。
    */
-  async function reap(reason) {
-    if (stop(reason)) return true;
+  async function stop(reason) {
+    if (child) {
+      const c = child;
+      child = null;
+      try { c.kill(); } catch (_) { /* 已经退了 */ }
+      log('info', `奶龙已收工（${reason}）`);
+      return true;
+    }
     const r = await control('/quit');
     if (r && r.ok) {
       log('info', `奶龙已收工（${reason}·常驻进程）`);
@@ -297,8 +325,12 @@ export function apply(ctx, config = {}) {
     return false;
   }
 
-  function start() {
-    if (child) return { ok: true, already: true };
+  async function start() {
+    // 常驻实例（上次 DSH 留下的 / .bat 启动的）：绝不能再 spawn —— 第二实例会撞
+    // 单例锁退出，同时让常驻那只执行 second-instance（显示 + 回右下角），
+    // 用户看到的就是「点一下动作，奶龙被传送回角落」。
+    if (await probe()) return { ok: true, already: true, ready: true };
+    if (child) return { ok: true, already: true, ready: await waitForPet(3000) };
     if (!hasGraphicalDisplay()) return { ok: false, error: '当前环境没有图形显示，奶龙起不来' };
     const exe = electronPath();
     if (!exe) return { ok: false, error: '找不到 electron.exe，可用 NAILONG_ELECTRON_PATH 指定' };
@@ -322,7 +354,8 @@ export function apply(ctx, config = {}) {
       log('info', `奶龙进程退出（code=${code}）`);
     });
     log('info', `奶龙已出笼：${exe} ${APP_DIR}`);
-    return { ok: true, started: true };
+    const ready = await waitForPet(4000);
+    return { ok: true, started: true, ready };
   }
 
   // ---- 1. 路由：给 Web 半的按钮和外部脚本用 ----
@@ -421,11 +454,14 @@ export function apply(ctx, config = {}) {
 
   // ---- 3. 跟着 DSH 起停 ----
   ctx.effect(() => {
-    if (autoStart) start();
+    if (autoStart) {
+      void start().catch((err) => log('warn', '自动启动失败：' + String((err && err.message) || err)));
+    }
     return () => {
-      void reap('插件卸载');
+      void stop('插件卸载');
       try { if (hostChatServer) hostChatServer.close(); } catch (_) {}
       hostChatServer = null;
+      removeHostChatFile();
     };
   }, 'nailong-pet: electron lifecycle');
 }
