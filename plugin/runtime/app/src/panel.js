@@ -28,6 +28,9 @@ function fail(msg) {
   errEl.style.display = 'block';
   errEl.textContent = msg;
   console.error(msg);
+  // 主进程已经建好隐藏面板并置了 panelWanted；不 ready 就永远不会显示，
+  // 奶龙会一直暂停且拖不动（pet:move 被 panelWanted 拦住）。
+  host.ready();
 }
 
 /**

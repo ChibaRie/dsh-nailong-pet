@@ -93,11 +93,16 @@ function pickWeighted(list, excludeKey) {
   return use[use.length - 1];
 }
 
+let errorState = false;   // 启动失败：保持整窗可交互，至少能右键退出
+
 function fail(msg) {
   bootEl.hidden = true;
   errEl.hidden = false;
   errEl.textContent = msg;
   console.error(msg);
+  errorState = true;
+  setInteractive(true);   // 没有动画可命中，仍要能接到右键菜单
+  host.ready();           // 否则要等主进程 8s 兜底，期间窗口是隐形的
 }
 
 // ------------------------------------------------------------------ 载入
@@ -420,6 +425,7 @@ function endAction() {
 
 // ------------------------------------------------------------------ 交互
 function setInteractive(v) {
+  if (errorState) v = true;
   if (v === S.interactive) return;
   S.interactive = v;
   host.setInteractive(v);
