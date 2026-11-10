@@ -73,7 +73,10 @@ window.__ModuleLoader__.load({
           h('input', {
             style: css.input, value: text, placeholder: '和奶龙说点什么…',
             onChange: (e) => setText(e.target.value),
-            onKeyDown: (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } },
+            onKeyDown: (e) => {
+              // 中文输入法选词时也会发 Enter；这次按键不是「发送」
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); send(); }
+            },
           }),
           h('button', { type: 'button', style: css.send, disabled: busy, onClick: send }, '发送')));
     }

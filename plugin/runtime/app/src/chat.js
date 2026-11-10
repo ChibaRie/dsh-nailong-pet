@@ -48,7 +48,10 @@ async function send() {
 document.getElementById('close').addEventListener('click', () => api.close());
 document.getElementById('poke').addEventListener('click', () => api.poke());
 sendBtn.addEventListener('click', send);
-inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+// 中文输入法选词时也会发 Enter；这次按键不是「发送」
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send(); }
+});
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 api.ready();
 add('bot', '嗨，我是奶龙～ 想聊点什么？');
