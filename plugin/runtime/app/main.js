@@ -145,7 +145,12 @@ function workArea(force) {
   return cachedWorkArea;
 }
 function clampToWorkArea(x, y, w, h) {
-  const wa = workArea();
+  // 按目标矩形中心所在的显示器夹取：拖到副屏时才会换用那块屏的工作区。
+  // 用当前窗口所在的显示器（workArea()）会让奶龙永远被夹在启动那块屏上。
+  const wa = screen.getDisplayNearestPoint({
+    x: Math.round(x + w / 2),
+    y: Math.round(y + h / 2),
+  }).workArea;
   let hit = 0;
   if (x <= wa.x) { x = wa.x; hit |= 1; }
   if (x + w >= wa.x + wa.width) { x = wa.x + wa.width - w; hit |= 2; }
