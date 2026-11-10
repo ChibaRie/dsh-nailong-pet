@@ -431,8 +431,15 @@ function panelState() {
 let chatWin = null;
 let chatWanted = false;
 
+/** 插件没传 env 时（例如 .bat 独立启动）也读 DSH 的默认端口文件 */
+function defaultHostChatFile() {
+  const home = process.env.DSH_HOME
+    || path.join(process.env.USERPROFILE || process.env.HOME || '', '.dsh');
+  return path.join(home, 'nailong-pet', 'host-chat.json');
+}
+
 function hostChatUrl() {
-  const file = process.env.NAILONG_HOST_CHAT_FILE || '';
+  const file = process.env.NAILONG_HOST_CHAT_FILE || defaultHostChatFile();
   if (!file) return null;
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
