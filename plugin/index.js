@@ -376,16 +376,25 @@ export function apply(ctx, config = {}) {
           const url = new URL(req.url, 'http://127.0.0.1');
           const sub = url.pathname.slice(ROUTE.length).replace(/^\//, '');
           if (sub === '' || sub === 'state') {
-            return reply({ ok: true, running: !!child, electron: childExe, app: APP_DIR });
+            const running = !!child || await probe();
+            return reply({ ok: true, running, electron: childExe, app: APP_DIR });
           }
           if (sub === 'toggle') {
-            return reply(stop('面板按钮') ? { ok: true, running: false } : start());
+            if (await stop('面板按钮')) return reply({ ok: true, running: false });
+            return reply(await start());
           }
-          if (sub === 'start') return reply(start());
-          if (sub === 'stop') return reply({ ok: stop('面板按钮'), running: !!child });
+          if (sub === 'start') return reply(await start());
+          if (sub === 'stop') {
+            const ok = await stop('面板按钮');
+            return reply({ ok, running: ok ? false : !!child });
+          }
           if (sub === 'action') {
             const key = url.searchParams.get('key') || 'random';
-            if (!child) start();
+            if (!child) {
+              const r = await start();
+              if (!r.ok) return reply(r, 500);
+              if (!r.ready) return reply({ ok: false, error: '奶龙正在起床，稍等一下再试' }, 503);
+            }
             return reply(await control('/action?key=' + encodeURIComponent(key)));
           }
           if (sub === 'chat') {
@@ -426,22 +435,25 @@ export function apply(ctx, config = {}) {
       handler: async ({ rawInput }) => {
         const arg = String(rawInput || '').trim();
         if (!arg) {
-          if (stop('命令')) return { kind: 'success', text: '奶龙回家睡觉了' };
-          const r = start();
-          return r.ok ? { kind: 'success', text: '奶龙出来了 🐣' } : { kind: 'error', text: r.error };
+          if (await stop('命令')) return { kind: 'success', text: '奶龙回家睡觉了' };
+          const r = await start();
+          if (!r.ok) return { kind: 'error', text: r.error };
+          return { kind: 'success', text: r.ready ? '奶龙出来了 🐣' : '奶龙正在起床…' };
         }
         if (arg === '关' || arg === '关掉' || arg === '回家') {
-          return { kind: 'success', text: stop('命令') ? '奶龙回家睡觉了' : '奶龙本来就没出来' };
+          return { kind: 'success', text: (await stop('命令')) ? '奶龙回家睡觉了' : '奶龙本来就没出来' };
         }
-        if (!child) start();
+        const key = ACTIONS[arg];
+        if (arg !== '右下角' && !key) {
+          return { kind: 'error', text: `不认识的指令「${arg}」。可用：${Object.keys(ACTIONS).join(' / ')}` };
+        }
+        const started = await start();
+        if (!started.ok) return { kind: 'error', text: started.error };
+        if (!started.ready) return { kind: 'error', text: '奶龙正在起床，稍等一下再试' };
 
         if (arg === '右下角') {
           const r = await control('/home');
           return r.ok ? { kind: 'success', text: '奶龙回到右下角' } : { kind: 'error', text: r.error };
-        }
-        const key = ACTIONS[arg];
-        if (!key) {
-          return { kind: 'error', text: `不认识的指令「${arg}」。可用：${Object.keys(ACTIONS).join(' / ')}` };
         }
         const r = await control('/action?key=' + encodeURIComponent(key));
         return r.ok
