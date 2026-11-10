@@ -632,12 +632,21 @@ function drawFrame(def, alpha) {
   if (alpha < 1) ctx.globalAlpha = 1;
 }
 
+let lastDrawKey = '';
+
 function render() {
   const a = S.anim;
-  if (!a) return;
+  if (!a) return false;
   const b = frameBlend();
   const L = S.layout;
   const dpr = window.devicePixelRatio || 1;
+  // 只比较"画出来会是什么"：姿势、混合权重、镜像、布局、位图版本。
+  // S.pos 在每帧静置窗口里也会走，但 frameBlend 的输出不变 —— 不能拿 pos 当 key。
+  const key = a.key + '|' + b.d0.name + '|' + (b.d1 ? b.d1.name : '') + '|' + b.frac.toFixed(3)
+    + '|' + (S.mirrored ? 1 : 0) + '|' + L.cellX + ',' + L.cellY + ',' + L.cellW + ',' + L.cellH
+    + '|' + canvas.width + 'x' + canvas.height + '|' + resampleKey;
+  if (key === lastDrawKey) return false;
+  lastDrawKey = key;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -650,6 +659,7 @@ function render() {
   drawFrame(b.d0, 1);
   if (b.d1) drawFrame(b.d1, b.frac);
   ctx.restore();
+  return true;
 }
 
 function tick(ts) {
@@ -659,12 +669,11 @@ function tick(ts) {
   last = ts;
   try {
     update(dt);
-    render();
+    // 只给自检用的绘制计数（真实重绘次数，见 main.js 的 SMOKE_PROBE_JS）
+    if (render()) S.painted = (S.painted || 0) + 1;
   } catch (err) {
     console.error(err);
   }
-  // 只给自检用的绘制计数（统计真实帧率，见 main.js 的 SMOKE_PROBE_JS）
-  S.painted = (S.painted || 0) + 1;
 }
 
 // ------------------------------------------------------------------ 启动
